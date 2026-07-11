@@ -27,14 +27,58 @@ font = pygame.font.SysFont(None, 26)
 # Хмаринка
 bubble_image = pygame.image.load("Cloude4.png").convert_alpha()
 
+# ---- Background ----
+background = pygame.image.load("Map.png").convert()
+background = pygame.transform.scale(background, (WIDTH, HEIGHT))
+
 # ---- Base ----
-BASE_SIZE = 80
+BASE_SIZE = 120
+base_image = pygame.image.load("Base.png").convert_alpha()
+base_image = pygame.transform.scale(base_image, (BASE_SIZE, BASE_SIZE))
 base_x = WIDTH // 2 - BASE_SIZE // 2
 base_y = HEIGHT // 2 - BASE_SIZE // 2
 BASE_COLOR = (0, 200, 0)  # зелений
 base_active = False
 BASE_MAX_HP = 100
 base_hp = BASE_MAX_HP
+
+
+# позиції дерев (нижній край торкається трави)
+
+trees = [
+    {"x":200, "y":650, "frame":0, "timer":random.random()*5},
+    {"x":500, "y":680, "frame":0, "timer":random.random()*5},
+    {"x":800, "y":660, "frame":0, "timer":random.random()*5}
+]
+
+# ---- Trees ----
+
+TREE_WIDTH = 40
+TREE_HEIGHT = 100
+TREE_FRAMES = 10
+
+tree_frames = []
+
+for i in range(TREE_FRAMES):
+    img = pygame.image.load(f"assets/Tree/Tree{i}.png").convert_alpha()
+    img = pygame.transform.scale(img, (TREE_WIDTH, TREE_HEIGHT))
+    tree_frames.append(img)
+
+TREE_ANIM_DELAY = 0.15
+
+trees = [
+    {"x":200, "y":520, "frame":0, "timer":0,
+     "next_move":time.time()+random.randint(1,10),
+     "moving":False},
+
+    {"x":500, "y":540, "frame":0, "timer":0,
+     "next_move":time.time()+random.randint(1,10),
+     "moving":False},
+
+    {"x":800, "y":510, "frame":0, "timer":0,
+     "next_move":time.time()+random.randint(1,10),
+     "moving":False}
+]
 
 # Час між хвилями
 WAVE_DELAY = 10  # секунд між хвилями
@@ -46,12 +90,24 @@ enemies_per_wave = 5
 enemies_spawned = 0
 
 # ---- Enemies ----
-ENEMY_SIZE = 30
+ENEMY_SIZE = 40
 BASE_ENEMY_SPEED = 2
 enemy_speed = BASE_ENEMY_SPEED + wave * 0.3
 ENEMY_DAMAGE = 20
 ENEMY_SPAWN_TIME = 0.5  # сек
 ENEMY_MAX_HP = 30
+
+# ---- Enemy sprites ----
+
+ENEMY_FRAMES = 18
+enemy_frames = []
+
+for i in range(ENEMY_FRAMES):
+    img = pygame.image.load(f"assets/Spider/Spider{i}.png").convert_alpha()
+    img = pygame.transform.scale(img, (ENEMY_SIZE, ENEMY_SIZE))
+    enemy_frames.append(img)
+
+ENEMY_ANIM_DELAY = 0.12
 
 enemies = []
 last_enemy_spawn = time.time()
@@ -64,6 +120,26 @@ bob_x, bob_y = 100, 300
 bob_speed = 5
 BOB_MAX_HP = 100
 bob_hp = BOB_MAX_HP
+
+bob_walk_left = []
+bob_walk_right = []
+
+for i in range(12):
+    img = pygame.image.load(f"assets/bob/Bob_Left_{i}.png").convert_alpha()
+    img = pygame.transform.scale(img, (bob_size, bob_size))
+    bob_walk_left.append(img)
+
+    # інверсія для правого руху
+    img_flipped = pygame.transform.flip(img, True, False)
+    bob_walk_right.append(img_flipped)
+
+bob_anim_index = 0
+bob_anim_timer = 0
+bob_anim_speed = 0.005  # швидкість анімації
+bob_direction = "right"
+
+bob_frame = 0
+BOB_ANIM_DELAY = 0.09  # секунди між кадрами
 
 # ---- Robin ----
 robin_size = 40
@@ -118,13 +194,15 @@ def spawn_enemy():
     enemies.append({
         "rect": pygame.Rect(x, y, ENEMY_SIZE, ENEMY_SIZE),
         "hp": ENEMY_MAX_HP,
-        "last_attack": 0
+        "last_attack": 0,
+        "frame": 0,
+        "timer": 0
     })
 
 
 running = True
 while running:
-    screen.fill(BLACK)
+    screen.blit(background, (0, 0))
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -132,14 +210,32 @@ while running:
 
     # --- Рух Bob ---
     keys = pygame.key.get_pressed()
+    moving = False
+
     if keys[pygame.K_LEFT]:
         bob_x -= bob_speed
+        bob_direction = "left"
+        moving = True
     if keys[pygame.K_RIGHT]:
         bob_x += bob_speed
+        bob_direction = "right"
+        moving = True
     if keys[pygame.K_UP]:
         bob_y -= bob_speed
+        moving = True
     if keys[pygame.K_DOWN]:
         bob_y += bob_speed
+        moving = True
+
+    moving = keys[pygame.K_LEFT] or keys[pygame.K_RIGHT] or keys[pygame.K_UP] or keys[pygame.K_DOWN]
+
+    if moving:
+        bob_anim_timer += clock.get_time() / 1000
+        if bob_anim_timer >= BOB_ANIM_DELAY:
+            bob_anim_timer = 0
+            bob_frame = (bob_frame + 1) % len(bob_walk_left)
+    else:
+        bob_frame = 0
 
     bob_rect = pygame.Rect(bob_x, bob_y, bob_size, bob_size)
 
@@ -208,6 +304,30 @@ while running:
                 robin_x += (nx + side_x) * speed + wiggle
                 robin_y += (ny + side_y) * speed - wiggle
 
+    # ---- Tree animation ----
+
+    now = time.time()
+
+    for tree in trees:
+
+        if not tree["moving"] and now > tree["next_move"]:
+            tree["moving"] = True
+            tree["frame"] = 0
+
+        if tree["moving"]:
+            tree["timer"] += clock.get_time() / 1000
+
+            if tree["timer"] > TREE_ANIM_DELAY:
+
+                tree["timer"] = 0
+                tree["frame"] += 1
+
+                if tree["frame"] >= len(tree_frames):
+                    tree["frame"] = 0
+                    tree["moving"] = False
+
+                    tree["next_move"] = now + random.randint(9, 10)
+
 # Шкала життя Боба і Робіна
     def draw_character_hp(x, y, hp, max_hp):
         width = 40
@@ -240,11 +360,7 @@ while running:
         screen.blit(text, (x, y - 22))
 
     if base_active:
-        pygame.draw.rect(
-            screen,
-            BASE_COLOR,
-            (base_x, base_y, BASE_SIZE, BASE_SIZE)
-        )
+        screen.blit(base_image, (base_x, base_y))
         draw_base_hp()
 
 
@@ -295,6 +411,13 @@ while running:
     for enemy in enemies[:]:
         rect = enemy["rect"]
 
+        # анімація ворога
+        enemy["timer"] += clock.get_time() / 1000
+
+        if enemy["timer"] > ENEMY_ANIM_DELAY:
+            enemy["timer"] = 0
+            enemy["frame"] = (enemy["frame"] + 1) % ENEMY_FRAMES
+
         #  рух до бази
         rect = enemy["rect"]
 
@@ -324,6 +447,7 @@ while running:
                 enemy["last_attack"] = now
 
         # Удар по базі
+
         elif rect.colliderect(base_rect):
             base_hp -= ENEMY_DAMAGE
             enemies.remove(enemy)
@@ -337,32 +461,14 @@ while running:
             enemies.remove(enemy)
             continue
 
-        # малювання ворога
-        pygame.draw.rect(screen, (255, 120, 0), rect)
         # HP ворога
         hp_ratio = enemy["hp"] / ENEMY_MAX_HP
+
         pygame.draw.rect(screen, (255, 0, 0),
-                         (rect.x, rect.y - 6, ENEMY_SIZE * hp_ratio, 4))
+                         (rect.x, rect.y - 6,
+                          ENEMY_SIZE * hp_ratio, 4))
 
-    # --- Спавн ворогів ---
-    if base_active and enemies_spawned < enemies_per_wave:
-        if time.time() - last_enemy_spawn > ENEMY_SPAWN_TIME:
-            spawn_enemy()
-            enemies_spawned += 1
-            last_enemy_spawn = time.time()
-
-    if enemies_spawned >= enemies_per_wave and not enemies:
-        wave += 1
-        enemies_spawned = 0
-        enemies_per_wave += 3
-
-    if wave_active and enemies_spawned < enemies_per_wave:
-        if now - last_enemy_spawn > ENEMY_SPAWN_TIME:
-            spawn_enemy()
-            enemies_spawned += 1
-            last_enemy_spawn = now
-
-
+   
 
     if base_hp <= 0:
         running = False
@@ -382,12 +488,21 @@ while running:
    # hit_sound.play()
    # enemy_die_sound.play()
 
+
+
     # --- Малювання персонажів ---
-    pygame.draw.rect(screen, RED, bob_rect)
+    if keys[pygame.K_LEFT]:
+        screen.blit(bob_walk_left[bob_frame], (bob_x, bob_y))
+    elif keys[pygame.K_RIGHT]:
+        screen.blit(bob_walk_right[bob_frame], (bob_x, bob_y))
+    else:
+        screen.blit(bob_walk_left[bob_frame], (bob_x, bob_y))
     pygame.draw.rect(screen, PURPLE, (robin_x, robin_y, robin_size, robin_size))
 
     draw_character_hp(bob_x, bob_y, bob_hp, BOB_MAX_HP)
     draw_character_hp(robin_x, robin_y, robin_hp, ROBIN_MAX_HP)
+
+
 
     # --- Хмаринки ---
     def draw_bubble(text, x, y):
@@ -426,6 +541,53 @@ while running:
         text = font.render("YOU WIN!", True, (0, 255, 0))
         rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
         screen.blit(text, rect)
+
+    # ---- Правильне малювання по Y ----
+
+    objects = []
+
+    # дерева
+    for tree in trees:
+        objects.append((
+            tree["y"] + TREE_HEIGHT,
+            tree_frames[tree["frame"]],
+            (tree["x"], tree["y"])
+        ))
+
+    # Bob
+    objects.append((
+        bob_y + bob_size,
+        bob_walk_left[bob_frame] if bob_direction == "left"
+        else bob_walk_right[bob_frame],
+        (bob_x, bob_y)
+    ))
+
+    # Robin
+    robin_surface = pygame.Surface((robin_size, robin_size), pygame.SRCALPHA)
+    pygame.draw.rect(robin_surface, PURPLE, (0, 0, robin_size, robin_size))
+
+    objects.append((
+        robin_y + robin_size,
+        robin_surface,
+        (robin_x, robin_y)
+    ))
+
+    # вороги
+    for enemy in enemies:
+        rect = enemy["rect"]
+
+        objects.append((
+            rect.y + ENEMY_SIZE,
+            enemy_frames[enemy["frame"]],
+            (rect.x, rect.y)
+        ))
+
+    # сортування
+    objects.sort(key=lambda obj: obj[0])
+
+    # малювання
+    for obj in objects:
+        screen.blit(obj[1], obj[2])
 
     pygame.display.flip()
     clock.tick(60)
